@@ -8,12 +8,13 @@ if (!process.env.IS_EXTENSION) {
 
 function log(level, message, data = {}) {
   if (LOG_LEVEL === 'silent') return;
-  if (level === 'debug' && LOG_LEVEL !== 'debug') return;
   
   const timestamp = new Date().toISOString();
   const logEntry = {timestamp, level, message, ...data};
   
-  if (level === 'error') {
+  if (level === 'debug') {
+    console.debug(JSON.stringify(logEntry));
+  } else if (level === 'error') {
     console.error(JSON.stringify(logEntry));
   } else if (level === 'warn') {
     console.warn(JSON.stringify(logEntry));
@@ -76,18 +77,33 @@ const messageHandlers = {
         throw new Error('No files provided');
       }
 
-      // Process each file based on type
       const results = [];
       for (const file of request.files) {
-        if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-          results.push(await extractFormData(file));
-        } else {
-          log('warn', 'Unsupported file type', {file});
+        try {
+          if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+              file.type === 'application/vnd.ms-excel') {
+            const fileData = await extractExcelData(file);
+            results.push({
+              fileName: file.name,
+              success: true,
+              data: fileData
+            });
+          } else {
+            throw new Error(`Unsupported file type: ${file.type}`);
+          }
+        } catch (fileError) {
+          log('error', 'File processing failed', {file: file.name, error: fileError.message});
+          results.push({
+            fileName: file.name,
+            success: false,
+            error: fileError.message
+          });
         }
       }
 
       return {
-        success: true,
+        success: results.some(r => r.success),
+        filesProcessed: results.length,
         results,
         timestamp: Date.now()
       };
@@ -133,6 +149,31 @@ function isValidResponse(data) {
          'data' in data && 'meta' in data;
 }
 
+// Extract form data from Excel file
+async function extractExcelData(file) {
+  // TODO: Implement actual Excel parsing
+  // For now return mock data matching expected form structure
+  return {
+    fields: [
+      {
+        name: 'firstName',
+        type: 'text',
+        value: 'John'
+      },
+      {
+        name: 'lastName',
+        type: 'text',
+        value: 'Doe'
+      },
+      {
+        name: 'email',
+        type: 'email',
+        value: 'john.doe@example.com'
+      }
+    ]
+  };
+}
+
 // Extract form data from docx file
 async function extractFormData(file) {
   // TODO: Implement actual docx parsing
@@ -171,64 +212,48 @@ function sanitizeResponse(data) {
 }
 
 // Main message handler with verification and rate limiting
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   try {
-    log('debug', 'Received message', {request, sender});
+    log('info', 'Received message', {request, sender});
 
-    // Verify sender is either extension page or content script
     if (!isValidExtensionSender(sender) && !isValidContentScriptSender(sender)) {
       log('warn', 'Message from untrusted source', {sender});
       sendResponse({error: 'Untrusted message source'});
-      return false;
-    }
-
-    // Rate limiting
-    const senderKey = sender.tab?.id || sender.url;
-    const currentCount = requestCounts.get(senderKey) || 0;
-    
-    if (currentCount >= RATE_LIMIT.MAX_REQUESTS) {
-      log('warn', 'Rate limit exceeded', {senderKey, currentCount});
-      sendResponse({error: 'Rate limit exceeded. Please try again later.'});
-      return false;
+      return true;
     }
     
-    requestCounts.set(senderKey, currentCount + 1);
-
-    // Verify message type exists and is allowed
-    if (!messageHandlers[request.type]) {
-      log('warn', 'Unknown message type', {type: request.type});
-      sendResponse({error: 'Invalid message type'});
-      return false;
-    }
-
-    // Additional verification for sensitive operations
     if (request.type === 'PROCESS_FILES' && !isValidExtensionSender(sender)) {
-      log('warn', 'File processing attempted from untrusted source', {sender});
+      log('info', 'File processing attempted from untrusted source', {sender});
       sendResponse({error: 'Unauthorized file processing request'});
-      return false;
+      return true;
     }
 
     try {
-      // Handle message with async/await
+      log('info', 'Prepare to handle message', {type: request.type, sender});
+      
       if (messageHandlers[request.type]) {
-        messageHandlers[request.type](request, sender)
-          .then(response => sendResponse(response))
-          .catch(error => sendResponse({error: error.message}));
-        
-        // Keep the message port open for async operations
+        (async () => {
+          try {
+            const result = await messageHandlers[request.type](request, sender);
+            sendResponse(result);
+          } catch (error) {
+            sendResponse({error: error.message});
+          }
+        })();
         return true;
       }
       
       log('warn', 'No handler found for message type', {type: request.type});
       sendResponse({error: 'No handler found for message type'});
-      return false;
+      return true;
     } catch (error) {
       log('error', 'Unexpected error in message listener', {error});
       sendResponse({error: 'Internal server error'});
-      return false;
+      return true;
     }
   } catch(e) {
-    log("error", e)
+    log("error", "Error:", e);
+    return true;
   }
 });
 

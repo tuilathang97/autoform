@@ -5,12 +5,13 @@ const LOG_LEVEL = process.env.LOG_LEVEL || 'debug';
 
 function log(level, message, data = {}) {
   if (LOG_LEVEL === 'silent') return;
-  if (level === 'debug' && LOG_LEVEL !== 'debug') return;
   
   const timestamp = new Date().toISOString();
   const logEntry = {timestamp, level, message, ...data};
   
-  if (level === 'error') {
+  if (level === 'debug') {
+    console.debug(JSON.stringify(logEntry));
+  } else if (level === 'error') {
     console.error(JSON.stringify(logEntry));
   } else if (level === 'warn') {
     console.warn(JSON.stringify(logEntry));
@@ -20,7 +21,10 @@ function log(level, message, data = {}) {
 }
 
 // Security constants
-const ALLOWED_FILE_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const ALLOWED_FILE_TYPES = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel' // .xls
+];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const Popup = () => {
@@ -60,36 +64,21 @@ const Popup = () => {
     error: null
   });
 
-  // Utility function for sending messages to background
-  const sendMessage = async (type, data = {}) => {
-    console.log("hello world")
+  const sendMessage = (type, data = {}) => {
+    log('debug', 'Sending message', {type, data});
     if (!window.chrome?.runtime?.sendMessage) {
       log('warn', 'Chrome runtime API not available - running in standalone mode');
       return {success: false, error: 'Chrome runtime unavailable'};
     }
 
-    console.log("hello world 1")
-
-    try {
-
-      const response = await new Promise(resolve => {
-        chrome.runtime.sendMessage({type, ...data}, resolve)
-      });
-
-      console.log("hello world 2", response)
-
-      
-      if (response?.error) {
-        log('debug', 'Message response failed', {type, response});
-        throw new Error(response.error);
+    const response = window.chrome.runtime.sendMessage(
+      {type, ...data},
+      function(response) {
+        // Handle state update in react from background.js
       }
-      
-      log('debug', 'Message response received', {type, response});
-      return response;
-    } catch (error) {
-      log('error', 'Message failed', {type, error});
-      throw error;
-    }
+    );
+
+    return response;
   };
 
   // Listen for messages from background
@@ -139,7 +128,7 @@ const Popup = () => {
     );
 
     if (invalidFiles.length > 0) {
-      const errorMsg = `Invalid files detected. Only PDF/DOCX files under 10MB are allowed.`;
+      const errorMsg = `Invalid files detected. Only Excel files (.xlsx, .xls) under 10MB are allowed.`;
       log('error', 'Invalid files detected', {invalidFiles});
       setError(errorMsg);
       return;
@@ -156,27 +145,24 @@ const Popup = () => {
         error: null
       });
 
-      // Send files to background for processing
-      const response = await sendMessage('PROCESS_FILES', {
-        files: droppedFiles.map(file => ({
-          name: file.name,
-          type: file.type,
-          size: file.size
-        }))
+      // Read file content and send to background
+      const fileReaders = droppedFiles.map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            content: e.target.result
+          });
+          reader.readAsDataURL(file);
+        });
       });
 
-      log("info", {response});
-
-      if (response?.success) {
-        setUploadState({
-          loading: false,
-          progress: 100,
-          success: true,
-          error: null
-        });
-      } else {
-        throw new Error(response?.error || 'File processing failed');
-      }
+      const filesWithContent = await Promise.all(fileReaders);
+      const response = sendMessage('PROCESS_FILES', {
+        files: filesWithContent
+      });
     } catch (error) {
       log('error', 'File upload failed', {error});
       setUploadState({
