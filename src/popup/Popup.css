@@ -1,0 +1,153 @@
+.popup-container {
+  width: 300px;
+  padding: 16px;
+  font-family: Arial, sans-serif;
+}
+
+.popup-container h1 {
+  font-size: 18px;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.popup-container p {
+  font-size: 14px;
+  color: #666;
+}
+
+.drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 4px;
+  padding: 20px;
+  text-align: center;
+  margin: 16px 0;
+  transition: all 0.3s ease;
+}
+
+.drop-zone.dragging {
+  border-color: #0078d7;
+  background-color: #f0f7ff;
+}
+
+.drop-zone p {
+  margin: 0;
+  color: #666;
+}
+
+.drop-zone.dragging p {
+  color: #0078d7;
+}
+
+.file-list {
+  margin-top: 16px;
+  border-top: 1px solid #eee;
+  padding-top: 16px;
+}
+
+.file-list h3 {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.file-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-list li {
+  font-size: 13px;
+  padding: 4px 0;
+  color: #444;
+}
+
+.form-config-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8f8f8;
+  border-radius: 4px;
+}
+
+.form-config-section h3 {
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.config-option {
+  margin-bottom: 8px;
+}
+
+.config-option label {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #444;
+  cursor: pointer;
+}
+
+.config-option input {
+  margin-right: 8px;
+}
+
+.llm-response {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f0f7ff;
+  border-radius: 4px;
+  border-left: 3px solid #0078d7;
+}
+
+.llm-response h3 {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #0078d7;
+}
+
+.llm-response pre {
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  color: #333;
+}
+
+.performance-metrics {
+  margin-top: 12px;
+  padding: 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.performance-metrics h3 {
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #333;
+}
+
+.performance-metrics p {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+}
+
+.error-message {
+  margin-top: 12px;
+  padding: 8px;
+  background: #fff0f0;
+  border-radius: 4px;
+  border-left: 3px solid #d70000;
+}
+
+.error-message h3 {
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #d70000;
+}
+
+.error-message p {
+  font-size: 13px;
+  color: #d70000;
+  margin: 0;
+}
