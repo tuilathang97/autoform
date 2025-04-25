@@ -5,10 +5,10 @@ const LOG_LEVEL = process.env.LOG_LEVEL || 'debug';
 
 function log(level, message, data = {}) {
   if (LOG_LEVEL === 'silent') return;
-  
+
   const timestamp = new Date().toISOString();
   const logEntry = {timestamp, level, message, ...data};
-  
+
   if (level === 'debug') {
     console.debug(JSON.stringify(logEntry));
   } else if (level === 'error') {
@@ -40,6 +40,11 @@ const Popup = () => {
   const [backgroundError, setBackgroundError] = useState(null);
   const [formFields, setFormFields] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [formFillStatus, setFormFillStatus] = useState({
+    success: false,
+    fieldsProcessed: 0,
+    errors: []
+  });
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -71,19 +76,87 @@ const Popup = () => {
       return {success: false, error: 'Chrome runtime unavailable'};
     }
 
-    const response = window.chrome.runtime.sendMessage(
+    // Set processing state to true when sending a message
+    if (type === 'PROCESS_FILES') {
+      setIsProcessing(true);
+    }
+
+    window.chrome.runtime.sendMessage(
       {type, ...data},
       function(response) {
-        // Handle state update in react from background.js
+        log('info', 'Received response from background', {response});
+
+        try {
+          // Parse the response if it's a string
+          const parsedResponse = typeof response === 'string' ? JSON.parse(response) : response;
+
+          if (parsedResponse && parsedResponse.success) {
+            // Update state with the processed data
+            setUploadState({
+              loading: false,
+              progress: 100,
+              success: true,
+              error: null
+            });
+
+            // Extract form field data from the response
+            if (parsedResponse.results && parsedResponse.results.length > 0) {
+              const fileData = parsedResponse.results[0].data;
+
+              if (fileData && fileData.fields) {
+                // Update form fields state
+                setFormFields(fileData.fields);
+
+                // Send message to content script to fill the form
+                log('info', 'Sending form data to content script', {fields: fileData.fields});
+                chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                  if (tabs && tabs.length > 0) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                      type: 'FILL_FORM',
+                      data: {
+                        fields: fileData.fields,
+                        autoSubmit: formConfig.autoSubmit
+                      }
+                    }, function(fillResponse) {
+                      log('info', 'Form filling response', {fillResponse});
+                      setIsProcessing(false);
+                    });
+                  } else {
+                    log('error', 'No active tab found');
+                    setBackgroundError('No active tab found to fill form');
+                    setIsProcessing(false);
+                  }
+                });
+              }
+            }
+          } else if (parsedResponse && parsedResponse.error) {
+            // Handle error in response
+            log('error', 'Error in response', {error: parsedResponse.error});
+            setUploadState({
+              loading: false,
+              progress: 0,
+              success: false,
+              error: parsedResponse.error
+            });
+            setIsProcessing(false);
+          }
+        } catch (error) {
+          log('error', 'Error processing response', {error, response});
+          setUploadState({
+            loading: false,
+            progress: 0,
+            success: false,
+            error: 'Failed to process response'
+          });
+          setIsProcessing(false);
+        }
       }
     );
-
-    return response;
   };
 
   // Listen for messages from background
   useEffect(() => {
-    const messageListener = (message, sender, sendResponse) => {
+    const messageListener = (message) => {
       if (message.type === 'LLM_RESPONSE') {
         log('info', 'Received LLM response', {data: message.data});
         setLlmResponse(message.data);
@@ -91,9 +164,27 @@ const Popup = () => {
       } else if (message.type === 'BACKGROUND_ERROR') {
         log('error', 'Background error', {error: message.error});
         setBackgroundError(message.error);
+        setIsProcessing(false);
+        setFormFillStatus(prev => ({
+          ...prev,
+          success: false,
+          errors: [...prev.errors, message.error]
+        }));
       } else if (message.type === 'FORM_FILLING_COMPLETE') {
-        log('info', 'Form filling completed', {processingTime: message.processingTime});
+        log('info', 'Form filling completed', {
+          processingTime: message.processingTime,
+          success: message.success,
+          fieldsProcessed: message.fieldsProcessed,
+          errors: message.errors
+        });
+
         setProcessingTime(message.processingTime || 0);
+        setIsProcessing(false);
+        setFormFillStatus({
+          success: message.success,
+          fieldsProcessed: message.fieldsProcessed || 0,
+          errors: message.errors || []
+        });
       }
       return true;
     };
@@ -102,7 +193,7 @@ const Popup = () => {
       chrome.runtime.onMessage.addListener(messageListener);
       return () => chrome.runtime.onMessage.removeListener(messageListener);
     }
-    
+
     log('warn', 'Chrome runtime API not available - running in standalone mode');
     return () => {};
   }, []);
@@ -119,9 +210,9 @@ const Popup = () => {
       success: false,
       error: null
     });
-    
+
     const droppedFiles = Array.from(e.dataTransfer.files);
-    
+
     // Validate files
     const invalidFiles = droppedFiles.filter(file =>
       !ALLOWED_FILE_TYPES.includes(file.type) || file.size > MAX_FILE_SIZE
@@ -136,7 +227,7 @@ const Popup = () => {
 
     log('info', 'Files accepted for processing', {files: droppedFiles.map(f => f.name)});
     setFiles(droppedFiles);
-    
+
     try {
       setUploadState({
         loading: true,
@@ -160,7 +251,7 @@ const Popup = () => {
       });
 
       const filesWithContent = await Promise.all(fileReaders);
-      const response = sendMessage('PROCESS_FILES', {
+      sendMessage('PROCESS_FILES', {
         files: filesWithContent
       });
     } catch (error) {
@@ -177,8 +268,15 @@ const Popup = () => {
   return (
     <div className="popup-container">
       <h1>Extension Popup</h1>
-      
-      <div 
+
+      {isProcessing && (
+        <div className="processing-indicator">
+          <p>Processing form data...</p>
+          <div className="spinner"></div>
+        </div>
+      )}
+
+      <div
         className={`drop-zone ${isDragging ? 'dragging' : ''}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -240,7 +338,75 @@ const Popup = () => {
                 Auto-submit after filling
               </label>
             </div>
+
+            {formFields.length > 0 && !isProcessing && (
+              <button
+                className="fill-form-button"
+                onClick={() => {
+                  setIsProcessing(true);
+                  setFormFillStatus({
+                    success: false,
+                    fieldsProcessed: 0,
+                    errors: []
+                  });
+
+                  log('info', 'Manually triggering form fill');
+                  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                    if (tabs && tabs.length > 0) {
+                      chrome.tabs.sendMessage(tabs[0].id, {
+                        type: 'FILL_FORM',
+                        data: {
+                          fields: formFields,
+                          autoSubmit: formConfig.autoSubmit
+                        }
+                      });
+                    } else {
+                      log('error', 'No active tab found');
+                      setBackgroundError('No active tab found to fill form');
+                      setIsProcessing(false);
+                    }
+                  });
+                }}
+              >
+                Fill Form Now
+              </button>
+            )}
           </div>
+
+          {formFields.length > 0 && (
+            <div className="form-fields">
+              <h3>Form Fields to Fill</h3>
+              <ul>
+                {formFields.map((field, index) => (
+                  <li key={index}>
+                    <strong>{field.name}</strong>: {field.value}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {formFillStatus.fieldsProcessed > 0 && (
+            <div className={`form-fill-status ${formFillStatus.success ? 'success' : 'error'}`}>
+              <h3>Form Fill Status</h3>
+              <p>
+                <strong>Status:</strong> {formFillStatus.success ? 'Success' : 'Error'}
+              </p>
+              <p>
+                <strong>Fields Processed:</strong> {formFillStatus.fieldsProcessed}
+              </p>
+              {formFillStatus.errors && formFillStatus.errors.length > 0 && (
+                <div className="fill-errors">
+                  <strong>Errors:</strong>
+                  <ul>
+                    {formFillStatus.errors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
 
           {llmResponse && (
             <div className="llm-response">

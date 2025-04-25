@@ -2,7 +2,7 @@
  * DOM Parser and Form Handler
  * Provides utilities for DOM querying and form manipulation
  */
-export function parseDOM(element = document) {
+function parseDOM(element = document) {
   // Helper functions for DOM manipulation
   const domUtils = {
     find: (selector) => element.querySelector(selector),
@@ -21,7 +21,7 @@ export function parseDOM(element = document) {
     mapFormFields(formElement) {
       const fields = {};
       const inputs = domUtils.findAll(formElement, 'input, select, textarea');
-      
+
       inputs.forEach(input => {
         const name = input.name || input.id;
         if (name) {
@@ -32,7 +32,7 @@ export function parseDOM(element = document) {
           };
         }
       });
-      
+
       return fields;
     },
 
@@ -46,7 +46,7 @@ export function parseDOM(element = document) {
       const startTime = performance.now();
       const fieldMap = this.mapFormFields(formElement);
       const errors = [];
-      
+
       Object.entries(values).forEach(([name, value]) => {
         const field = fieldMap[name];
         if (!field) {
@@ -102,3 +102,23 @@ export function parseDOM(element = document) {
     }
   };
 }
+
+// Make parseDOM available globally for content script
+(function(global) {
+  // Ensure we're in a browser environment
+  if (typeof global.window !== 'undefined') {
+    // Make the function available globally
+    global.parseDOM = parseDOM;
+    console.log('parseDOM function registered globally');
+  }
+
+  // Also support module exports if available
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { parseDOM };
+  } else if (typeof exports !== 'undefined') {
+    exports.parseDOM = parseDOM;
+  }
+})(typeof self !== 'undefined' ? self : this);
+
+// For ES modules
+export { parseDOM };

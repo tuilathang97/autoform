@@ -24,7 +24,9 @@
   "permissions": [
     "scripting",
     "storage",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "activeTab",
+    "tabs"
   ],
   "host_permissions": [
     "https://api.example.com/"
@@ -34,7 +36,14 @@
     "type": "module"
   },
   "web_accessible_resources": [{
-    "resources": ["assets/*"],
+    "resources": ["assets/*", "domParser.js", "content.js"],
     "matches": ["<all_urls>"]
-  }]
+  }],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }

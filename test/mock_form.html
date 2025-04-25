@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mock Form</title>
+</head>
+<body>
+  <h1>Mock Form</h1>
+  <form id="mockForm">
+    <label for="firstName">First Name:</label>
+    <input type="text" id="firstName" name="firstName" /><br/><br/>
+    <label for="lastName">Last Name:</label>
+    <input type="text" id="lastName" name="lastName" /><br/><br/>
+    <label for="email">Email:</label>
+    <input type="email" id="email" name="email" /><br/><br/>
+    <button type="submit">Submit</button>
+  </form>
+
+  <script>
+    // Function to populate form fields with data
+    function populateForm(data) {
+      if (!data || !data.fields) return;
+      data.fields.forEach(field => {
+        const input = document.getElementById(field.name);
+        if (input) {
+          input.value = field.value || '';
+        }
+      });
+    }
+
+    // Listen for messages from extension popup
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'POPULATE_FORM') {
+        populateForm(event.data.payload);
+      }
+    });
+  </script>
+</body>
+</html>
