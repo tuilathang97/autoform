@@ -1,4 +1,5 @@
 # Chrome Extension + LLM Backend Integration Architecture
+This is a Chrome extension that takes an Excel file, sends it along with DOM structures containing form elements to a backend that uses an LLM to extract and map data. The frontend then auto-fills the form based on the backend's response
 
 ## System Components
 
