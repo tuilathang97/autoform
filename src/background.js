@@ -168,7 +168,7 @@ async function extractExcelData(file) {
       {
         name: 'email',
         type: 'email',
-        value: 'john.doe@example.com'
+        value: 'thang.nguyen@example.com'
       }
     ]
   };
